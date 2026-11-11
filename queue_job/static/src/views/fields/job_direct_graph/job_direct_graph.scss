@@ -1,0 +1,22 @@
+.o_field_job_directed_graph {
+    width: 600px;
+    height: 400px;
+    border: 1px solid lightgray;
+
+    div.root_vis {
+        height: 100%;
+        width: 100%;
+
+        // style vis-network tooltip matching odoo styling
+        // as the default style does not really match...
+        .vis-tooltip {
+            background-color: $white;
+            border: 1px solid $border-color;
+            border-radius: $border-radius;
+            box-shadow: $box-shadow-sm;
+            color: $body-color;
+            font-family: $font-family-base;
+            font-size: $font-size-sm;
+        }
+    }
+}
