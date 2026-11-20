@@ -55,6 +55,20 @@ class HikvisionDevice(models.Model):
         headers = {"Content-Type": "application/json"}
         return url, auth, headers
 
+    def _format_hikvision_datetime(self, dt, tz=None):
+        """Format datetime to ISO-8601 with explicit timezone offset (±HH:MM) for Hikvision ISAPI."""
+        if tz is None:
+            user_tz = self.env.user.tz or "UTC"
+            tz = pytz.timezone(user_tz)
+        if dt.tzinfo is None:
+            dt = tz.localize(dt)
+        else:
+            dt = dt.astimezone(tz)
+        iso_str = dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+        if len(iso_str) >= 5 and iso_str[-3] != ":":
+            iso_str = f"{iso_str[:-2]}:{iso_str[-2:]}"
+        return iso_str
+
     def test_connection(self):
         """Test connection and fetch device details."""
         for device in self:
@@ -100,9 +114,6 @@ class HikvisionDevice(models.Model):
         start_datetime = local_tz.localize(datetime.combine(start_date, dt_time.min))
         end_datetime = local_tz.localize(datetime.combine(end_date, dt_time.max))
 
-        start_utc = start_datetime.astimezone(pytz.UTC)
-        end_utc = end_datetime.astimezone(pytz.UTC)
-
         url, auth, headers = self._get_api_config("/ISAPI/AccessControl/AcsEvent?format=json")
 
         payload_template = {
@@ -112,8 +123,8 @@ class HikvisionDevice(models.Model):
                 "maxResults": 30,
                 "major": 5,
                 "minor": 0,
-                "startTime": start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "endTime": end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+                "startTime": self._format_hikvision_datetime(start_datetime, local_tz),
+                "endTime": self._format_hikvision_datetime(end_datetime, local_tz)
             }
         }
 
@@ -123,6 +134,7 @@ class HikvisionDevice(models.Model):
 
         while True:
             payload_template["AcsEventCond"]["searchResultPosition"] = position
+            response = None
             try:
                 response = requests.post(url, auth=auth, json=payload_template, headers=headers, timeout=10)
                 response.raise_for_status()
@@ -151,7 +163,8 @@ class HikvisionDevice(models.Model):
             except requests.exceptions.ConnectionError as e:
                 raise exceptions.UserError(f"Failed to connect to the device at {self.ip_address}: {str(e)}")
             except requests.exceptions.HTTPError as e:
-                raise exceptions.UserError(f"HTTP error occurred: {str(e)}")
+                detail = f" | Response: {response.text}" if response is not None and response.text else ""
+                raise exceptions.UserError(f"HTTP error occurred: {str(e)}{detail}")
             except requests.exceptions.RequestException as e:
                 raise exceptions.UserError(f"Error communicating with the device: {str(e)}")
 
@@ -207,17 +220,19 @@ class HikvisionDevice(models.Model):
 
     def _fetch_attendance_chunk(self, start_date, end_date):
         """Fetch attendance for a date range chunk."""
+        user_tz = self.env.user.tz or "UTC"
+        local_tz = pytz.timezone(user_tz)
         url, auth, headers = self._get_api_config("/ISAPI/AccessControl/AcsEvent?format=json")
 
         payload_template = {
             "AcsEventCond": {
                 "searchID": "1",
                 "searchResultPosition": 0,
-                "maxResults": 100,
+                "maxResults": 30,
                 "major": 5,
                 "minor": 0,
-                "startTime": start_date.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "endTime": end_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+                "startTime": self._format_hikvision_datetime(start_date, local_tz),
+                "endTime": self._format_hikvision_datetime(end_date, local_tz)
             }
         }
 
@@ -227,6 +242,7 @@ class HikvisionDevice(models.Model):
 
         while True:
             payload_template["AcsEventCond"]["searchResultPosition"] = position
+            response = None
             try:
                 response = requests.post(url, auth=auth, json=payload_template, headers=headers, timeout=30)
                 try:
@@ -267,7 +283,8 @@ class HikvisionDevice(models.Model):
             except requests.exceptions.ConnectionError as e:
                 raise exceptions.UserError(f"Failed to connect to the device at {self.ip_address}: {str(e)}")
             except requests.exceptions.HTTPError as e:
-                raise exceptions.UserError(f"HTTP error occurred: {str(e)}")
+                detail = f" | Response: {response.text}" if response is not None and response.text else ""
+                raise exceptions.UserError(f"HTTP error occurred: {str(e)}{detail}")
             except requests.exceptions.Timeout as e:
                 raise exceptions.UserError(f"Request timed out: {str(e)}")
             except requests.exceptions.RequestException as e:
