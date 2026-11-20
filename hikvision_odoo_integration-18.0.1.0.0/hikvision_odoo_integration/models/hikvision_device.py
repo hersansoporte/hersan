@@ -344,7 +344,7 @@ class HikvisionDevice(models.Model):
 
         try:
             events = device.fetch_attendance(start_date=start_date, end_date=end_date)
-            employees = device.fetch_employees()
+            # employees = device.fetch_employees()
 
             processed_count = 0
             skipped_count = 0
@@ -478,7 +478,7 @@ class HikvisionDevice(models.Model):
             device.test_connection()
             events = device.fetch_all_attendance()
 
-            device.fetch_employees()
+            # device.fetch_employees()
             self.env.cr.commit()
 
             employees = self.env["hr.employee"].search([("hikvision_number", "!=", False)])
@@ -701,12 +701,12 @@ class HikvisionDevice(models.Model):
                                 "name": emp_name or existing_emp.name
                             })
                             fetched_emp_ids.append(existing_emp.id)
-                        else:
-                            new_emp = self.env["hr.employee"].create({
-                                "name": emp_name or "Unknown",
-                                "hikvision_number": emp_no
-                            })
-                            fetched_emp_ids.append(new_emp.id)
+                        # else:
+#                             new_emp = self.env["hr.employee"].create({
+#                                 "name": emp_name or "Unknown",
+#                                 "hikvision_number": emp_no
+#                             })
+#                             fetched_emp_ids.append(new_emp.id)
                     self.env.cr.commit()
                     return {
                         "type": "ir.actions.act_window",
