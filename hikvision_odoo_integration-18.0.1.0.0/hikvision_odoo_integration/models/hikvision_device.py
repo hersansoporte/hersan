@@ -108,7 +108,7 @@ class HikvisionDevice(models.Model):
 
         if not start_date or not end_date:
             today = datetime.now(local_tz).date()
-            start_date = today
+            start_date = today - timedelta(days=1)
             end_date = today
 
         start_datetime = local_tz.localize(datetime.combine(start_date, dt_time.min))
