@@ -552,8 +552,8 @@ class HikvisionDevice(models.Model):
         self._sanitize_open_attendances(employee, pass_time, local_tz)
 
         # Map 4 Hikvision touchscreen buttons into work-interval transitions:
-        # - checkIn / breakIn  -> 'in'  (start of shift or return from Almuerzo/Comida/Cena)
-        # - breakOut / checkOut -> 'out' (start of break or end of shift)
+        # - checkIn / breakIn  -> 'in'  (start of shift or return from Comida)
+        # - breakOut / checkOut -> 'out' (start of Comida or end of shift)
         effective_action = "in" if attendance_status in ("checkIn", "breakIn") else "out"
 
         open_att = Attendance.search([
@@ -576,8 +576,7 @@ class HikvisionDevice(models.Model):
                 # Stale open attendance from a previous shift -> auto-close using employee's schedule
                 self._close_stale_attendance(employee, open_att, pass_time, local_tz)
 
-            # Anti-debounce against accidental double-taps (< 45 seconds after previous check_out),
-            # while allowing short 15-min Almuerzo and 30/45-min Comida/Cena breaks
+            # Anti-debounce against accidental double-taps (< 45 seconds after previous check_out)
             last_closed = Attendance.search([
                 ("employee_id", "=", employee.id),
                 ("check_out", "!=", False),
@@ -589,6 +588,7 @@ class HikvisionDevice(models.Model):
                 Attendance.sudo().create({
                     "employee_id": employee.id,
                     "check_in": pass_time,
+                    "hikvision_in_status": attendance_status,
                 })
                 return "created"
             except ValidationError:
@@ -601,6 +601,7 @@ class HikvisionDevice(models.Model):
                     Attendance.sudo().create({
                         "employee_id": employee.id,
                         "check_in": pass_time,
+                        "hikvision_in_status": attendance_status,
                     })
                     return "created"
                 return "skipped"
@@ -620,7 +621,10 @@ class HikvisionDevice(models.Model):
                 self._close_stale_attendance(employee, open_att, pass_time, local_tz)
                 return "updated"
 
-            open_att.sudo().write({"check_out": pass_time})
+            open_att.sudo().write({
+                "check_out": pass_time,
+                "hikvision_out_status": attendance_status,
+            })
             return "updated"
 
     def job_download_attendance(self, device_id, start_date=None, end_date=None):
