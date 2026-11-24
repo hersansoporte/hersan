@@ -174,11 +174,21 @@ class HikvisionDevice(models.Model):
 
         scheduled_end_utc = scheduled_end_local.astimezone(pytz.UTC).replace(tzinfo=None)
 
-        # Clamp strictly between (checkin_utc + 1 min) and (new_checkin_utc - 1 sec)
+        # Avoid overlapping any subsequent attendance record already stored in Odoo
+        next_att = self.env["hr.attendance"].search([
+            ("employee_id", "=", employee.id),
+            ("check_in", ">", checkin_utc),
+        ], order="check_in asc", limit=1)
+
+        upper_bound = new_checkin_utc - timedelta(seconds=1)
+        if next_att:
+            upper_bound = min(upper_bound, next_att.check_in - timedelta(seconds=1))
+
+        # Clamp strictly between (checkin_utc + 1 min) and upper_bound
         min_end = checkin_utc + timedelta(minutes=1)
-        max_end = min(checkin_utc + timedelta(hours=14), new_checkin_utc - timedelta(seconds=1))
+        max_end = min(checkin_utc + timedelta(hours=14), upper_bound)
         if max_end < min_end:
-            return new_checkin_utc - timedelta(seconds=1)
+            return max(checkin_utc + timedelta(seconds=1), upper_bound)
         return max(min_end, min(scheduled_end_utc, max_end))
 
     def _close_stale_attendance(self, employee, open_att, new_checkin_utc, local_tz):
@@ -191,6 +201,26 @@ class HikvisionDevice(models.Model):
             employee, open_att.check_in, new_checkin_utc, local_tz
         )
         open_att.sudo().write({"check_out": safe_checkout})
+
+    def _sanitize_open_attendances(self, employee, reference_time, local_tz):
+        """Close any stale or out-of-order open attendances that sit before a newer record."""
+        Attendance = self.env["hr.attendance"]
+        open_atts = Attendance.search([
+            ("employee_id", "=", employee.id),
+            ("check_out", "=", False),
+        ], order="check_in asc")
+
+        for att in open_atts:
+            next_att = Attendance.search([
+                ("employee_id", "=", employee.id),
+                ("id", "!=", att.id),
+                ("check_in", ">", att.check_in),
+            ], order="check_in asc", limit=1)
+
+            if next_att:
+                self._close_stale_attendance(employee, att, next_att.check_in, local_tz)
+            elif (reference_time - att.check_in).total_seconds() / 3600.0 > 15.0:
+                self._close_stale_attendance(employee, att, reference_time, local_tz)
 
     # -------------------------------------------------------------------------
     # DEVICE CONNECTION & EVENT FETCHING
@@ -517,6 +547,9 @@ class HikvisionDevice(models.Model):
         ], limit=1)
         if duplicate:
             return "skipped"
+
+        # Clean up any stale or out-of-order open attendance before evaluating current punch
+        self._sanitize_open_attendances(employee, pass_time, local_tz)
 
         # Map 4 Hikvision touchscreen buttons into work-interval transitions:
         # - checkIn / breakIn  -> 'in'  (start of shift or return from Almuerzo/Comida/Cena)
