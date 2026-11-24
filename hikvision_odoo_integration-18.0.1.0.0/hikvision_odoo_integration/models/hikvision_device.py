@@ -532,51 +532,49 @@ class HikvisionDevice(models.Model):
         return parsed_events, skipped_no_status
 
     def _process_single_punch(self, employee, pass_time, attendance_status, local_tz):
-        """Apply a single attendance event (checkIn, breakOut, breakIn, checkOut) for an employee.
-
-        Returns 'created', 'updated', or 'skipped'.
-        """
+        """Apply a single attendance event (checkIn, breakOut, breakIn, checkOut) on one row per shift."""
         Attendance = self.env["hr.attendance"]
 
-        # Exact timestamp deduplication
         duplicate = Attendance.search([
             ("employee_id", "=", employee.id),
-            "|",
+            "|", "|", "|", "|", "|",
             ("check_in", "=", pass_time),
             ("check_out", "=", pass_time),
+            ("almuerzo_out", "=", pass_time),
+            ("almuerzo_in", "=", pass_time),
+            ("comida_out", "=", pass_time),
+            ("comida_in", "=", pass_time),
         ], limit=1)
         if duplicate:
             return "skipped"
 
-        # Clean up any stale or out-of-order open attendance before evaluating current punch
         self._sanitize_open_attendances(employee, pass_time, local_tz)
-
-        # Map 4 Hikvision touchscreen buttons into work-interval transitions:
-        # - checkIn / breakIn  -> 'in'  (start of shift or return from Comida)
-        # - breakOut / checkOut -> 'out' (start of Comida or end of shift)
-        effective_action = "in" if attendance_status in ("checkIn", "breakIn") else "out"
 
         open_att = Attendance.search([
             ("employee_id", "=", employee.id),
             ("check_out", "=", False),
         ], order="check_in desc", limit=1)
 
-        # Maximum shift span before considering an open session forgotten:
-        # Turno 1/2/3/4 overnight is 12h (19:00-07:00), Limpieza is 10h; 15h gives 3h overtime margin
-        max_open_hours = 15.0
+        if open_att:
+            last_ts = max(filter(None, [
+                open_att.check_in,
+                open_att.almuerzo_out,
+                open_att.almuerzo_in,
+                open_att.comida_out,
+                open_att.comida_in,
+            ]))
+            if 0 <= (pass_time - last_ts).total_seconds() < 45:
+                return "skipped"
 
-        if effective_action == "in":
+        if attendance_status == "checkIn":
             if open_att:
                 elapsed_hours = (pass_time - open_att.check_in).total_seconds() / 3600.0
                 if elapsed_hours < 0:
                     return "skipped"
-                if elapsed_hours <= max_open_hours:
-                    # Already clocked in within the same active shift -> ignore duplicate checkIn/breakIn
+                if elapsed_hours <= 15.0:
                     return "skipped"
-                # Stale open attendance from a previous shift -> auto-close using employee's schedule
                 self._close_stale_attendance(employee, open_att, pass_time, local_tz)
 
-            # Anti-debounce against accidental double-taps (< 45 seconds after previous check_out)
             last_closed = Attendance.search([
                 ("employee_id", "=", employee.id),
                 ("check_out", "!=", False),
@@ -584,48 +582,18 @@ class HikvisionDevice(models.Model):
             if last_closed and 0 <= (pass_time - last_closed.check_out).total_seconds() < 45:
                 return "skipped"
 
-            try:
-                Attendance.sudo().create({
-                    "employee_id": employee.id,
-                    "check_in": pass_time,
-                    "hikvision_in_status": attendance_status,
-                })
-                return "created"
-            except ValidationError:
-                still_open = Attendance.search([
-                    ("employee_id", "=", employee.id),
-                    ("check_out", "=", False),
-                ], order="check_in desc", limit=1)
-                if still_open and pass_time > still_open.check_in:
-                    self._close_stale_attendance(employee, still_open, pass_time, local_tz)
-                    Attendance.sudo().create({
-                        "employee_id": employee.id,
-                        "check_in": pass_time,
-                        "hikvision_in_status": attendance_status,
-                    })
-                    return "created"
-                return "skipped"
+            Attendance.sudo()._process_hikvision_punch(employee, pass_time, "checkIn")
+            return "created"
 
-        else:  # effective_action == "out" (breakOut or checkOut)
-            if not open_att:
-                # Ignore orphan breakOut/checkOut when no shift is open
-                return "skipped"
+        if not open_att:
+            return "skipped"
 
-            elapsed_seconds = (pass_time - open_att.check_in).total_seconds()
-            if elapsed_seconds < 45:
-                # Accidental double-tap right after checkIn/breakIn (< 45s)
-                return "skipped"
-
-            if elapsed_seconds / 3600.0 > max_open_hours:
-                # Open session belongs to an earlier forgotten shift; close that one at scheduled end
-                self._close_stale_attendance(employee, open_att, pass_time, local_tz)
-                return "updated"
-
-            open_att.sudo().write({
-                "check_out": pass_time,
-                "hikvision_out_status": attendance_status,
-            })
+        if (pass_time - open_att.check_in).total_seconds() / 3600.0 > 15.0:
+            self._close_stale_attendance(employee, open_att, pass_time, local_tz)
             return "updated"
+
+        Attendance.sudo()._process_hikvision_punch(employee, pass_time, attendance_status)
+        return "updated"
 
     def job_download_attendance(self, device_id, start_date=None, end_date=None):
         """Job to download and create attendance records in chronological order."""
