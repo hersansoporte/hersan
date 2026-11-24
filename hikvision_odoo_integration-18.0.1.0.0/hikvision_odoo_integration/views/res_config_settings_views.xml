@@ -22,20 +22,5 @@
       </xpath>
     </field>
   </record>
-    <record id="view_attendance_tree_hikvision_breaks" model="ir.ui.view">
-        <field name="name">hr.attendance.list.hikvision.breaks</field>
-        <field name="model">hr.attendance</field>
-        <field name="inherit_id" ref="hr_attendance.view_attendance_tree"/>
-        <field name="arch" type="xml">
-            <xpath expr="//field[@name='check_in']" position="after">
-                <field name="hikvision_in_status" optional="show"/>
-            </xpath>
-            <xpath expr="//field[@name='check_out']" position="after">
-                <field name="hikvision_out_status" optional="show"/>
-                <field name="break_start" optional="show"/>
-                <field name="break_end" optional="show"/>
-                <field name="break_duration" widget="float_time" optional="show"/>
-            </xpath>
-        </field>
-    </record>
+
 </odoo>
