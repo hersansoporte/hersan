@@ -19,7 +19,7 @@
 #    If not, see <http://www.gnu.org/licenses/>.
 #
 ################################################################################
-from odoo import fields, models
+from odoo import api, fields, models
 
 class HikvisionLogs(models.Model):
     """Stores Hikvision attendance logs for auditing."""
