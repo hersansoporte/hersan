@@ -4,7 +4,7 @@
         <field name="name">hikvision.logs.view.tree</field>
         <field name="model">hikvision.logs</field>
         <field name="arch" type="xml">
-            <list string="Attendance" create="false" >
+            <list string="Attendance" create="false">
                 <field name="employee_id"/>
                 <field name="date"/>
                 <field name="punch_type"/>
@@ -13,11 +13,13 @@
             </list>
         </field>
     </record>
+
     <record id="hikvision_odoo_integration.hikvision_logs_action" model="ir.actions.act_window">
         <field name="name">Hikvision Logs</field>
         <field name="res_model">hikvision.logs</field>
         <field name="view_mode">list,form</field>
     </record>
+
     <record id="view_attendance_tree_hikvision_breaks" model="ir.ui.view">
         <field name="name">hr.attendance.list.hikvision.breaks</field>
         <field name="model">hr.attendance</field>
@@ -32,9 +34,17 @@
         </field>
     </record>
 
-
-
-
-
-
+    <record id="view_attendance_form_hikvision_breaks" model="ir.ui.view">
+        <field name="name">hr.attendance.form.hikvision.breaks</field>
+        <field name="model">hr.attendance</field>
+        <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='check_out']" position="after">
+                <field name="almuerzo_out"/>
+                <field name="almuerzo_in"/>
+                <field name="comida_out"/>
+                <field name="comida_in"/>
+            </xpath>
+        </field>
+    </record>
 </odoo>

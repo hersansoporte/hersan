@@ -124,8 +124,8 @@ class HikvisionDevice(models.Model):
         - Standard 48 hours/week (Mon-Fri 09:00-18:00, Sat 09:00-14:30)
         - Jornada de Limpieza (Mon/Tue/Thu 08:00-18:00, Wed/Fri 08:00-17:00)
         - Rotating 2-week shifts (Turno 1/2/3/4):
-          * Day week: Mon-Thu 07:00-17:00 (or 09:00-19:00 on Monday for Mantenimiento/Turno 3/4)
-          * Night week: Mon-Thu 19:00-24:00 crossing midnight into 00:00-07:00 (or 05:00 Friday)
+          - Day week: Mon-Thu 07:00-17:00 (or 09:00-19:00 on Monday for Mantenimiento/Turno 3/4)
+          - Night week: Mon-Thu 19:00-24:00 crossing midnight into 00:00-07:00 (or 05:00 Friday)
         """
         checkin_local = pytz.UTC.localize(checkin_utc).astimezone(local_tz)
         checkin_date = checkin_local.date()
@@ -586,7 +586,15 @@ class HikvisionDevice(models.Model):
             return "created"
 
         if not open_att:
-            return "skipped"
+            last_closed = Attendance.search([
+                ("employee_id", "=", employee.id),
+                ("check_out", "!=", False),
+            ], order="check_out desc", limit=1)
+            if last_closed and 0 <= (pass_time - last_closed.check_out).total_seconds() < 45:
+                return "skipped"
+
+            Attendance.sudo()._process_hikvision_punch(employee, pass_time, attendance_status)
+            return "created"
 
         if (pass_time - open_att.check_in).total_seconds() / 3600.0 > 15.0:
             self._close_stale_attendance(employee, open_att, pass_time, local_tz)
@@ -732,11 +740,11 @@ class HikvisionDevice(models.Model):
             raise e
 
     # -------------------------------------------------------------------------
-    # EMPLOYEE SYNC (SAFE MODE: UPDATE EXISTING ONLY, NEVER CREATE EXTERNAL USERS)
+    # EMPLOYEE SYNC (SAFE MODE: MATCH EXISTING ONLY, PRESERVE ODOO NAMES)
     # -------------------------------------------------------------------------
 
     def fetch_employees(self):
-        """Sync names of existing Odoo employees with Hikvision terminal without creating new employees."""
+        """Match existing Odoo employees with Hikvision terminal without overwriting Odoo names."""
         for device in self:
             url, auth, headers = self._get_api_config("/ISAPI/AccessControl/UserInfo/Search?format=json")
             fetched_emp_ids = []
@@ -762,20 +770,16 @@ class HikvisionDevice(models.Model):
 
                     for emp in employees:
                         emp_no = emp.get("employeeNo")
-                        emp_name = emp.get("name")
                         if not emp_no:
                             continue
                         existing_emp = device._find_employee_by_hikvision_no(emp_no)
                         if existing_emp:
-                            if emp_name and existing_emp.name != emp_name:
-                                existing_emp.sudo().write({"name": emp_name})
                             fetched_emp_ids.append(existing_emp.id)
 
                     if len(employees) < 30:
                         break
                     position += 30
 
-                self.env.cr.commit()
                 return {
                     "type": "ir.actions.act_window",
                     "name": _("Matched Employees"),
