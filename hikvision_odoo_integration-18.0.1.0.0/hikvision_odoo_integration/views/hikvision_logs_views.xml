@@ -24,6 +24,7 @@
         <field name="name">hr.attendance.list.hikvision.breaks</field>
         <field name="model">hr.attendance</field>
         <field name="inherit_id" ref="hr_attendance.view_attendance_tree"/>
+        <field name="priority">99</field>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='check_in']" position="after">
                 <field name="almuerzo_out"/>
@@ -31,7 +32,7 @@
                 <field name="comida_out"/>
                 <field name="comida_in"/>
             </xpath>
-            <xpath expr="//field[@name='worked_hours']" position="replace">
+            <xpath expr="(//field[@name='worked_hours' or @name='hik_worked_hours'])[1]" position="replace">
                 <field name="break_hours" string="Tiempo de descanso" widget="float_time" sum="Total descanso"/>
                 <field name="worked_hours" string="Tiempo trabajado" widget="float_time" sum="Total trabajado"/>
                 <field name="total_hours" string="Tiempo total" widget="float_time" sum="Total general"/>
@@ -43,6 +44,7 @@
         <field name="name">hr.attendance.form.hikvision.breaks</field>
         <field name="model">hr.attendance</field>
         <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
+        <field name="priority">99</field>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='check_out']" position="after">
                 <field name="almuerzo_out"/>
@@ -50,7 +52,7 @@
                 <field name="comida_out"/>
                 <field name="comida_in"/>
             </xpath>
-            <xpath expr="//field[@name='worked_hours']" position="replace">
+            <xpath expr="(//field[@name='worked_hours' or @name='hik_worked_hours'])[1]" position="replace">
                 <field name="break_hours" string="Tiempo de descanso" widget="float_time"/>
                 <field name="worked_hours" string="Tiempo trabajado" widget="float_time"/>
                 <field name="total_hours" string="Tiempo total" widget="float_time"/>

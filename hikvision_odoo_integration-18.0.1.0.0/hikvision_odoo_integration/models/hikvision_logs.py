@@ -58,6 +58,12 @@ class HrAttendance(models.Model):
         store=True,
         readonly=True,
     )
+    worked_hours = fields.Float(
+        string='Tiempo trabajado',
+        compute='_compute_worked_hours',
+        store=True,
+        readonly=True,
+    )
     total_hours = fields.Float(
         string='Tiempo total',
         compute='_compute_break_and_total_hours',
@@ -97,7 +103,10 @@ class HrAttendance(models.Model):
         for attendance in self:
             if attendance.check_in and attendance.check_out:
                 _, worked_seconds, _ = attendance._get_attendance_duration_seconds()
-                attendance.worked_hours = worked_seconds / 3600.0
+                worked_val = worked_seconds / 3600.0
+                attendance.worked_hours = worked_val
+                if 'hik_worked_hours' in attendance._fields:
+                    attendance.hik_worked_hours = worked_val
 
     @api.depends('check_in', 'check_out', 'almuerzo_out', 'almuerzo_in', 'comida_out', 'comida_in')
     def _compute_break_and_total_hours(self):
