@@ -9,15 +9,6 @@
 #    You can modify it under the terms of the GNU AFFERO
 #    GENERAL PUBLIC LICENSE (AGPL v3), Version 3.
 #
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU AFFERO GENERAL PUBLIC LICENSE (AGPL v3) for more details.
-#
-#    You should have received a copy of the GNU AFFERO GENERAL PUBLIC LICENSE
-#    (AGPL v3) along with this program.
-#    If not, see <http://www.gnu.org/licenses/>.
-#
 ################################################################################
 import pytz
 from odoo import api, fields, models
@@ -61,28 +52,59 @@ class HrAttendance(models.Model):
     comida_out = fields.Datetime(string='Salida Comida', readonly=True)
     comida_in = fields.Datetime(string='Regreso Comida', readonly=True)
 
+    break_hours = fields.Float(
+        string='Tiempo de descanso',
+        compute='_compute_break_and_total_hours',
+        store=True,
+        readonly=True,
+    )
+    total_hours = fields.Float(
+        string='Tiempo total',
+        compute='_compute_break_and_total_hours',
+        store=True,
+        readonly=True,
+    )
+
+    def _get_attendance_duration_seconds(self):
+        """Return (break_seconds, worked_seconds, total_seconds) using actual punches."""
+        self.ensure_one()
+        break_seconds = 0.0
+        if (
+            self.almuerzo_out
+            and self.almuerzo_in
+            and self.almuerzo_in > self.almuerzo_out
+        ):
+            break_seconds += (self.almuerzo_in - self.almuerzo_out).total_seconds()
+        if (
+            self.comida_out
+            and self.comida_in
+            and self.comida_in > self.comida_out
+        ):
+            break_seconds += (self.comida_in - self.comida_out).total_seconds()
+
+        if self.check_in and self.check_out and self.check_out >= self.check_in:
+            total_seconds = (self.check_out - self.check_in).total_seconds()
+            worked_seconds = max(0.0, total_seconds - break_seconds)
+        else:
+            total_seconds = 0.0
+            worked_seconds = 0.0
+
+        return break_seconds, worked_seconds, total_seconds
+
     @api.depends('check_in', 'check_out', 'almuerzo_out', 'almuerzo_in', 'comida_out', 'comida_in')
     def _compute_worked_hours(self):
         super()._compute_worked_hours()
         for attendance in self:
-            if attendance.check_in and attendance.check_out and (
-                (attendance.almuerzo_out and attendance.almuerzo_in)
-                or (attendance.comida_out and attendance.comida_in)
-            ):
-                total_seconds = (attendance.check_out - attendance.check_in).total_seconds()
-                if (
-                    attendance.almuerzo_out
-                    and attendance.almuerzo_in
-                    and attendance.almuerzo_in > attendance.almuerzo_out
-                ):
-                    total_seconds -= (attendance.almuerzo_in - attendance.almuerzo_out).total_seconds()
-                if (
-                    attendance.comida_out
-                    and attendance.comida_in
-                    and attendance.comida_in > attendance.comida_out
-                ):
-                    total_seconds -= (attendance.comida_in - attendance.comida_out).total_seconds()
-                attendance.worked_hours = max(0.0, total_seconds / 3600.0)
+            if attendance.check_in and attendance.check_out:
+                _, worked_seconds, _ = attendance._get_attendance_duration_seconds()
+                attendance.worked_hours = worked_seconds / 3600.0
+
+    @api.depends('check_in', 'check_out', 'almuerzo_out', 'almuerzo_in', 'comida_out', 'comida_in')
+    def _compute_break_and_total_hours(self):
+        for attendance in self:
+            break_seconds, _, total_seconds = attendance._get_attendance_duration_seconds()
+            attendance.break_hours = max(0.0, break_seconds / 3600.0)
+            attendance.total_hours = max(0.0, total_seconds / 3600.0)
 
     def _get_employee_local_tz(self, employee):
         contract = getattr(employee, 'contract_id', False)

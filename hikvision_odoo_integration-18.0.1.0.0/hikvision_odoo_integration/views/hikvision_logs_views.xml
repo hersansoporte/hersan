@@ -31,6 +31,11 @@
                 <field name="comida_out"/>
                 <field name="comida_in"/>
             </xpath>
+            <xpath expr="//field[@name='worked_hours']" position="replace">
+                <field name="break_hours" string="Tiempo de descanso" widget="float_time" sum="Total descanso"/>
+                <field name="worked_hours" string="Tiempo trabajado" widget="float_time" sum="Total trabajado"/>
+                <field name="total_hours" string="Tiempo total" widget="float_time" sum="Total general"/>
+            </xpath>
         </field>
     </record>
 
@@ -44,6 +49,11 @@
                 <field name="almuerzo_in"/>
                 <field name="comida_out"/>
                 <field name="comida_in"/>
+            </xpath>
+            <xpath expr="//field[@name='worked_hours']" position="replace">
+                <field name="break_hours" string="Tiempo de descanso" widget="float_time"/>
+                <field name="worked_hours" string="Tiempo trabajado" widget="float_time"/>
+                <field name="total_hours" string="Tiempo total" widget="float_time"/>
             </xpath>
         </field>
     </record>
